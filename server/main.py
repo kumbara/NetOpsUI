@@ -22,13 +22,16 @@ import backends as bk
 import db
 import llm
 import runs
+import scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
     runs.init_runs()
+    scheduler.start()
     yield
+    scheduler.shutdown()
 
 
 app = FastAPI(title="NetOpsUI Manager", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -746,3 +749,86 @@ def run_events(tid: str, after: int = 0) -> StreamingResponse:
 @app.post("/api/threads/{tid}/stop")
 def stop_run(tid: str) -> dict:
     return {"ok": runs.cancel(_tid(tid))}
+# ── Tasks: scheduled agent jobs (scheduler.py) ────────────────────────────────
+
+class ScheduleIn(BaseModel):
+    name: str
+    prompt: str
+    trigger: dict
+    backend: str = "netops"
+    enabled: bool = True
+
+
+@app.get("/api/schedules")
+def list_schedules() -> dict:
+    with db.conn() as c:
+        s = [dict(r) for r in c.execute("SELECT * FROM schedules ORDER BY created_at")]
+        runs_ = c.execute("""SELECT r.*, s.name AS schedule_name FROM job_runs r
+                             JOIN schedules s ON s.id = r.schedule_id
+                             ORDER BY r.started_at DESC LIMIT 100""").fetchall()
+    for d in s:
+        d["trigger"] = json.loads(d["trigger"]); d["enabled"] = bool(d["enabled"])
+    return {"schedules": s, "runs": [dict(r) for r in runs_]}
+
+
+@app.get("/api/schedules/runs/{run_id}")
+def get_run(run_id: str) -> dict:
+    with db.conn() as c:
+        r = c.execute("""SELECT r.*, s.name AS schedule_name FROM job_runs r
+                         JOIN schedules s ON s.id = r.schedule_id WHERE r.id=?""", (run_id,)).fetchone()
+    if not r:
+        _bad("run tidak ditemukan", 404)
+    return dict(r)
+
+
+@app.post("/api/schedules", status_code=201)
+def create_schedule(t: ScheduleIn) -> dict:
+    if t.backend not in ("netops", "hermes"):
+        _bad("backend harus 'netops' atau 'hermes'")
+    import uuid
+    sid = uuid.uuid4().hex
+    with db.conn() as c:
+        c.execute("INSERT INTO schedules (id, name, prompt, trigger, backend, enabled) VALUES (?,?,?,?,?,?)",
+                  (sid, t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled)))
+    scheduler.sync(sid)
+    return {"id": sid}
+
+
+@app.get("/api/schedules/{sid}")
+def get_schedule(sid: str) -> dict:
+    with db.conn() as c:
+        r = c.execute("SELECT * FROM schedules WHERE id=?", (sid,)).fetchone()
+    if not r:
+        _bad("jadwal tidak ditemukan", 404)
+    d = dict(r)
+    d["trigger"] = json.loads(d["trigger"]); d["enabled"] = bool(d["enabled"])
+    return d
+
+
+@app.put("/api/schedules/{sid}")
+def update_schedule(sid: str, t: ScheduleIn) -> dict:
+    with db.conn() as c:
+        if c.execute("SELECT 1 FROM schedules WHERE id=?", (sid,)).fetchone() is None:
+            _bad("jadwal tidak ditemukan", 404)
+        c.execute("UPDATE schedules SET name=?, prompt=?, trigger=?, backend=?, enabled=? WHERE id=?",
+                  (t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled), sid))
+    scheduler.sync(sid)
+    return {"ok": True}
+
+
+@app.delete("/api/schedules/{sid}")
+def delete_schedule(sid: str) -> dict:
+    with db.conn() as c:
+        c.execute("DELETE FROM schedules WHERE id=?", (sid,))
+    scheduler.sync(sid)
+    return {"ok": True}
+
+
+@app.post("/api/schedules/{sid}/run")
+def run_schedule_now(sid: str) -> dict:
+    with db.conn() as c:
+        if c.execute("SELECT 1 FROM schedules WHERE id=?", (sid,)).fetchone() is None:
+            _bad("jadwal tidak ditemukan", 404)
+    import threading
+    threading.Thread(target=scheduler.execute, args=(sid,), daemon=True).start()
+    return {"ok": True, "started": True}

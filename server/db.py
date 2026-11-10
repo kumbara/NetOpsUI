@@ -69,6 +69,26 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS schedules (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  prompt     TEXT NOT NULL,
+  trigger    TEXT NOT NULL,
+  backend    TEXT NOT NULL DEFAULT 'netops',
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS job_runs (
+  id            TEXT PRIMARY KEY,
+  schedule_id   TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+  started_at    REAL NOT NULL,
+  finished_at   REAL,
+  status        TEXT NOT NULL DEFAULT 'running',
+  output        TEXT NOT NULL DEFAULT '',
+  file          TEXT NOT NULL DEFAULT '',
+  error         TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_sched ON job_runs(schedule_id, started_at DESC);
 CREATE TABLE IF NOT EXISTS profiles (
   slug        TEXT PRIMARY KEY,
   name        TEXT NOT NULL,

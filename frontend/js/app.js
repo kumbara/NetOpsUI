@@ -9,6 +9,7 @@ import { screenDashboard } from './screens/dashboard.js';
 import { screenChat, chatUnmount } from './screens/chat.js';
 import { screenNodes } from './screens/nodes.js';
 import { screenSkills } from './screens/skills.js';
+import { screenTasks } from './screens/tasks.js';
 import { screenAgents } from './screens/agents.js';
 import { screenSettings } from './screens/settings.js';
 import { screenAbout } from './screens/about.js';
@@ -47,6 +48,7 @@ async function navigate(screenId, param) {
       break;
     case 'nodes':     await screenNodes(c); break;
     case 'skills':    await screenSkills(c); break;
+    case 'tasks':     await screenTasks(c); break;
     case 'agents':    await screenAgents(c); break;
     case 'settings':  await screenSettings(c); break;
     case 'about':     screenAbout(c); break;
