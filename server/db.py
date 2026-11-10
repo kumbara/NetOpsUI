@@ -69,6 +69,21 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notify_channels (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  type       TEXT NOT NULL,
+  config     TEXT NOT NULL DEFAULT '{}',
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS notify_log (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel TEXT NOT NULL,
+  ok      INTEGER NOT NULL,
+  detail  TEXT NOT NULL DEFAULT '',
+  sent_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS schedules (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,

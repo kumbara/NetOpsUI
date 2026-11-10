@@ -12,6 +12,7 @@ export const NAV_ITEMS = [
   { id:'nodes',     label:'Nodes',      icon:'dns',        group:'Infrastructure' },
   { id:'skills',    label:'Skills',     icon:'psychology', group:'Agent Platform' },
   { id:'tasks',     label:'Tasks',      icon:'schedule',   group:'Agent Platform' },
+  { id:'alerts',    label:'Alerts',     icon:'notifications', group:'Agent Platform' },
   // Agents (screens/agents.js) hidden for now: no use case yet. Uncomment to bring it back;
   // while absent, #agents redirects to the dashboard.
   // { id:'agents',    label:'Agents',     icon:'smart_toy',  group:'Agent Platform' },

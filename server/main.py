@@ -23,6 +23,7 @@ import db
 import llm
 import runs
 import scheduler
+import notify
 
 
 @asynccontextmanager
@@ -757,6 +758,7 @@ class ScheduleIn(BaseModel):
     trigger: dict
     backend: str = "netops"
     enabled: bool = True
+    notify_on: str = "failure"  # always | failure | success
 
 
 @app.get("/api/schedules")
@@ -788,8 +790,8 @@ def create_schedule(t: ScheduleIn) -> dict:
     import uuid
     sid = uuid.uuid4().hex
     with db.conn() as c:
-        c.execute("INSERT INTO schedules (id, name, prompt, trigger, backend, enabled) VALUES (?,?,?,?,?,?)",
-                  (sid, t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled)))
+        c.execute("INSERT INTO schedules (id, name, prompt, trigger, backend, enabled, notify_on) VALUES (?,?,?,?,?,?,?)",
+                  (sid, t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled), t.notify_on))
     scheduler.sync(sid)
     return {"id": sid}
 
@@ -810,8 +812,8 @@ def update_schedule(sid: str, t: ScheduleIn) -> dict:
     with db.conn() as c:
         if c.execute("SELECT 1 FROM schedules WHERE id=?", (sid,)).fetchone() is None:
             _bad("jadwal tidak ditemukan", 404)
-        c.execute("UPDATE schedules SET name=?, prompt=?, trigger=?, backend=?, enabled=? WHERE id=?",
-                  (t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled), sid))
+        c.execute("UPDATE schedules SET name=?, prompt=?, trigger=?, backend=?, enabled=?, notify_on=? WHERE id=?",
+                  (t.name[:100], t.prompt, json.dumps(t.trigger), t.backend, int(t.enabled), t.notify_on, sid))
     scheduler.sync(sid)
     return {"ok": True}
 
@@ -832,3 +834,73 @@ def run_schedule_now(sid: str) -> dict:
     import threading
     threading.Thread(target=scheduler.execute, args=(sid,), daemon=True).start()
     return {"ok": True, "started": True}
+# ── Alerts: notification channels (notify.py) ────────────────────────────────
+
+class ChannelIn(BaseModel):
+    name: str
+    type: str
+    config: dict = {}
+    enabled: bool = True
+
+
+@app.get("/api/notify/channels")
+def list_channels() -> dict:
+    with db.conn() as c:
+        rows = c.execute("SELECT * FROM notify_channels ORDER BY created_at").fetchall()
+    rows = [dict(r) for r in rows]
+    for r in rows:
+        r["config"] = json.loads(r["config"])
+        # jangan kirim secret ke browser
+        for k in ("token", "password", "secret"):
+            if k in r["config"]:
+                r["config"][k] = "***" if r["config"][k] else ""
+        r["enabled"] = bool(r["enabled"])
+    return {"channels": [dict(r) for r in rows]}
+
+
+@app.post("/api/notify/channels", status_code=201)
+def create_channel(t: ChannelIn) -> dict:
+    if t.type not in ("webhook", "telegram", "email"):
+        _bad("tipe harus 'webhook', 'telegram', atau 'email'")
+    import uuid
+    cid = uuid.uuid4().hex
+    with db.conn() as c:
+        c.execute("INSERT INTO notify_channels (id, name, type, config, enabled) VALUES (?,?,?,?,?)",
+                  (cid, t.name[:100], t.type, json.dumps(t.config), int(t.enabled)))
+    return {"id": cid}
+
+
+@app.put("/api/notify/channels/{cid}")
+def update_channel(cid: str, t: ChannelIn) -> dict:
+    with db.conn() as c:
+        if c.execute("SELECT 1 FROM notify_channels WHERE id=?", (cid,)).fetchone() is None:
+            _bad("channel tidak ditemukan", 404)
+        # field secret kosong = pertahankan nilai lama
+        old = c.execute("SELECT config FROM notify_channels WHERE id=?", (cid,)).fetchone()["config"]
+        oldcfg = json.loads(old)
+        for k in ("token", "password", "secret"):
+            if k in t.config and not t.config[k]:
+                t.config[k] = oldcfg.get(k, "")
+        c.execute("UPDATE notify_channels SET name=?, type=?, config=?, enabled=? WHERE id=?",
+                  (t.name[:100], t.type, json.dumps(t.config), int(t.enabled), cid))
+    return {"ok": True}
+
+
+@app.delete("/api/notify/channels/{cid}")
+def delete_channel(cid: str) -> dict:
+    with db.conn() as c:
+        c.execute("DELETE FROM notify_channels WHERE id=?", (cid,))
+    return {"ok": True}
+
+
+@app.post("/api/notify/channels/{cid}/test")
+def test_channel(cid: str) -> dict:
+    ok, detail = notify.test_channel(cid)
+    return {"ok": ok, "detail": detail}
+
+
+@app.get("/api/notify/log")
+def notify_log(limit: int = 100) -> dict:
+    with db.conn() as c:
+        rows = c.execute("SELECT * FROM notify_log ORDER BY id DESC LIMIT ?", (max(1, min(limit, 500)),)).fetchall()
+    return {"log": [dict(r) for r in rows]}

@@ -149,6 +149,12 @@ function taskForm(editId) {
             <option value="netops">NetOps Agent</option><option value="hermes">Hermes</option>
           </select></div>
       </div>
+      <div><label class="block text-on-surface-variant mb-1">Notifikasi (kanal di menu Alerts)</label>
+        <select id="tf-notify" class="w-full border border-outline-variant rounded-lg px-3 py-2 bg-surface-container-lowest text-on-surface">
+          <option value="failure">Hanya saat gagal (disarankan)</option>
+          <option value="always">Setiap selesai</option>
+          <option value="success">Hanya saat berhasil</option>
+        </select></div>
     </div>
     <div class="px-6 pb-6 flex justify-end gap-3">
       <button data-close class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-body-sm font-medium hover:bg-surface-container">Batal</button>
@@ -163,6 +169,7 @@ function taskForm(editId) {
       $('tf-name').value = s.name;
       $('tf-prompt').value = s.prompt;
       $('tf-backend').value = s.backend;
+      $('tf-notify').value = s.notify_on || 'failure';
       const idx = PRESETS.findIndex(p => JSON.stringify(p.trigger) === JSON.stringify(s.trigger));
       $('tf-preset').value = idx >= 0 ? idx : 0;
     }).catch(() => {});
@@ -172,7 +179,7 @@ function taskForm(editId) {
     const name = $('tf-name').value.trim();
     const prompt = $('tf-prompt').value.trim();
     if (!name || !prompt) { alertDialog('Nama dan prompt wajib diisi.'); return; }
-    const body = { name, prompt, trigger: PRESETS[+$('tf-preset').value].trigger, backend: $('tf-backend').value };
+    const body = { name, prompt, trigger: PRESETS[+$('tf-preset').value].trigger, backend: $('tf-backend').value, notify_on: $('tf-notify').value };
     try {
       if (editId) await mgr('/schedules/' + editId, { method: 'PUT', body });
       else await mgr('/schedules', { method: 'POST', body });

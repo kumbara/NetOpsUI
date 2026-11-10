@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 
 import db
+import notify
 import runs
 
 HERMES_URL = os.environ.get("HERMES_URL", "http://127.0.0.1:8642").rstrip("/")
@@ -130,6 +131,7 @@ def execute(schedule_id: str) -> None:
         with db.conn() as c:
             c.execute("UPDATE job_runs SET finished_at=?, status=?, output=?, file=?, error=? WHERE id=?",
                       (time.time(), status, out[:MAX_OUTPUT], path, err[:500], run_id))
+        notify.notify_job(s, status, err, out)
     except Exception as e:  # noqa: BLE001
         with db.conn() as c:
             c.execute("UPDATE job_runs SET finished_at=?, status='failed', error=? WHERE id=?",
