@@ -36,6 +36,7 @@ export const hermes = {
     serverThreads: true,
     credential: true,     // needs an API key, managed in Settings > Backend
     jobs: true,           // scheduled (cron) jobs via /api/jobs
+    devices: true,        // node inventory shared with NetOps Agent
   },
 
   // Cron jobs: agent runs on a schedule. Fields used by the dashboard:
@@ -181,6 +182,24 @@ export const hermes = {
     const body = { choice };
     if (requestId) body.request_id = requestId;
     await http(BASE, `/v1/runs/${encodeURIComponent(runId)}/approval`, { method: 'POST', body });
+  },
+
+  // Node inventory: shared with the NetOps Agent (palapa) - same inventory.yaml,
+  // so nodes added here are visible to both backends.
+  async addDevice(device) {
+    return http('/backend/netops', '/devices', { method: 'POST', body: device });
+  },
+
+  async listDevices() {
+    return (await http('/backend/netops', '/devices')) || [];
+  },
+
+  async updateDevice(name, device) {
+    return http('/backend/netops', '/devices/' + encodeURIComponent(name), { method: 'PATCH', body: device });
+  },
+
+  async deleteDevice(name) {
+    return http('/backend/netops', '/devices/' + encodeURIComponent(name), { method: 'DELETE' });
   },
 
   async listSkills() {
